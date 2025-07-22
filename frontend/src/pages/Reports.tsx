@@ -22,12 +22,22 @@ import {
   Chip,
   IconButton,
   Snackbar,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+
+  Divider,
 } from '@mui/material';
 import {
   Assessment,
   GetApp,
   Visibility,
   Close,
+  Add,
+  PictureAsPdf,
+  TableChart,
 } from '@mui/icons-material';
 import { apiService } from '../services/apiService';
 import { Report } from '../types';
@@ -42,6 +52,18 @@ const Reports: React.FC = () => {
   const [reportData, setReportData] = useState<any>(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [customReportDialogOpen, setCustomReportDialogOpen] = useState(false);
+  const [customReportConfig, setCustomReportConfig] = useState({
+    name: '',
+    filters: {
+      location: '',
+      custodian: '',
+      status: '',
+      category: '',
+      date_range: { start: '', end: '' }
+    },
+    format: 'pdf'
+  });
 
   useEffect(() => {
     const fetchReports = async () => {
@@ -59,18 +81,69 @@ const Reports: React.FC = () => {
     fetchReports();
   }, []);
 
-  const handleGenerateReport = async (reportType: string) => {
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadReport = async (reportType: string, format: 'pdf' | 'csv' = 'pdf') => {
     try {
       setGenerating(reportType);
-      await apiService.generateReport(reportType);
-      setSnackbarMessage(`Report ${reportType} generated successfully!`);
-      setSnackbarOpen(true);
+      let blob: Blob;
+      let filename: string;
 
-      // Refresh reports list
-      const data = await apiService.getReports();
-      setReports(data);
+      switch (reportType) {
+        case 'asset-register':
+          if (format === 'csv') {
+            blob = await apiService.downloadAssetRegisterCSV();
+            filename = 'asset_register.csv';
+          } else {
+            blob = await apiService.downloadAssetRegisterPDF();
+            filename = 'asset_register.pdf';
+          }
+          break;
+        case 'exceptions':
+          if (format === 'csv') {
+            blob = await apiService.downloadExceptionReportCSV();
+            filename = 'exception_report.csv';
+          } else {
+            blob = await apiService.downloadExceptionReportPDF();
+            filename = 'exception_report.pdf';
+          }
+          break;
+        case 'depreciation-summary':
+          if (format === 'csv') {
+            blob = await apiService.downloadDepreciationSummaryCSV();
+            filename = 'depreciation_summary.csv';
+          } else {
+            blob = await apiService.downloadDepreciationSummaryPDF();
+            filename = 'depreciation_summary.pdf';
+          }
+          break;
+        case 'verification-results':
+          if (format === 'csv') {
+            blob = await apiService.downloadVerificationResultsCSV();
+            filename = 'verification_results.csv';
+          } else {
+            blob = await apiService.downloadVerificationResultsPDF();
+            filename = 'verification_results.pdf';
+          }
+          break;
+        default:
+          throw new Error('Unknown report type');
+      }
+
+      downloadBlob(blob, filename);
+      setSnackbarMessage(`${format.toUpperCase()} report ${reportType} downloaded successfully!`);
+      setSnackbarOpen(true);
     } catch (err: any) {
-      setSnackbarMessage(err.response?.data?.message || 'Failed to generate report');
+      setSnackbarMessage(err.response?.data?.message || 'Failed to download report');
       setSnackbarOpen(true);
     } finally {
       setGenerating(null);
@@ -86,32 +159,16 @@ const Reports: React.FC = () => {
       let data;
       switch (report.type) {
         case 'asset-register':
-          data = await fetch(`http://localhost:8000/api/reports/asset-register`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          }).then(res => res.json());
+          data = await apiService.viewAssetRegister();
           break;
         case 'exceptions':
-          data = await fetch(`http://localhost:8000/api/reports/exceptions`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          }).then(res => res.json());
+          data = await apiService.viewExceptionReport();
           break;
         case 'depreciation-summary':
-          data = await fetch(`http://localhost:8000/api/reports/depreciation-summary`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          }).then(res => res.json());
+          data = await apiService.viewDepreciationSummary();
           break;
         case 'verification-results':
-          data = await fetch(`http://localhost:8000/api/reports/verification-results`, {
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-          }).then(res => res.json());
+          data = await apiService.viewVerificationResults();
           break;
         default:
           data = { message: 'Report data not available' };
@@ -124,27 +181,55 @@ const Reports: React.FC = () => {
     }
   };
 
-  const handleDownloadReport = async (report: any) => {
+  const handleCreateCustomReport = async () => {
     try {
-      // For now, download as JSON - in production this would be PDF/Excel
-      const dataStr = JSON.stringify(reportData || report, null, 2);
-      const dataBlob = new Blob([dataStr], { type: 'application/json' });
-      const url = window.URL.createObjectURL(dataBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${report.type}-report-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      setGenerating('custom');
 
-      setSnackbarMessage('Report downloaded successfully!');
+      if (customReportConfig.format === 'pdf') {
+        const blob = await apiService.createCustomReport(customReportConfig);
+        const filename = `${customReportConfig.name.toLowerCase().replace(/\s+/g, '_')}.pdf`;
+        downloadBlob(blob, filename);
+        setSnackbarMessage('Custom report downloaded successfully!');
+      } else {
+        const data = await apiService.createCustomReport(customReportConfig);
+        setReportData(data);
+        setSelectedReport({ name: customReportConfig.name, type: 'custom' });
+        setViewDialogOpen(true);
+        setSnackbarMessage('Custom report generated successfully!');
+      }
+
       setSnackbarOpen(true);
+      setCustomReportDialogOpen(false);
     } catch (err: any) {
-      setSnackbarMessage('Failed to download report');
+      setSnackbarMessage(err.response?.data?.message || 'Failed to create custom report');
       setSnackbarOpen(true);
+    } finally {
+      setGenerating(null);
     }
   };
+
+  const handleCustomReportConfigChange = (field: string, value: any) => {
+    if (field.includes('.')) {
+      const [parent, child] = field.split('.');
+      setCustomReportConfig(prev => {
+        const parentObj = prev[parent as keyof typeof prev];
+        return {
+          ...prev,
+          [parent]: {
+            ...(typeof parentObj === 'object' && parentObj !== null ? parentObj : {}),
+            [child]: value
+          }
+        };
+      });
+    } else {
+      setCustomReportConfig(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
+  };
+
+
 
   const renderReportData = () => {
     if (!reportData) return <CircularProgress />;
@@ -305,19 +390,21 @@ const Reports: React.FC = () => {
               </Button>
               <Button
                 variant="contained"
-                startIcon={<GetApp />}
-                onClick={() => handleGenerateReport(report.type)}
+                startIcon={<PictureAsPdf />}
+                onClick={() => handleDownloadReport(report.type, 'pdf')}
                 disabled={generating === report.type}
                 sx={{ mr: 1 }}
               >
-                {generating === report.type ? 'Generating...' : 'Generate'}
+                {generating === report.type ? 'Downloading...' : 'Download PDF'}
               </Button>
               <Button
                 variant="outlined"
-                startIcon={<GetApp />}
-                onClick={() => handleDownloadReport(report)}
+                startIcon={<TableChart />}
+                onClick={() => handleDownloadReport(report.type, 'csv')}
+                disabled={generating === report.type}
+                color="success"
               >
-                Download
+                {generating === report.type ? 'Downloading...' : 'Download CSV'}
               </Button>
             </CardActions>
           </Card>
@@ -331,8 +418,13 @@ const Reports: React.FC = () => {
         <Typography variant="body2" color="text.secondary" paragraph>
           Create custom reports with specific filters and date ranges.
         </Typography>
-        <Button variant="outlined">
-          Create Custom Report
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => setCustomReportDialogOpen(true)}
+          disabled={generating === 'custom'}
+        >
+          {generating === 'custom' ? 'Creating...' : 'Create Custom Report'}
         </Button>
       </Paper>
 
@@ -388,6 +480,110 @@ const Reports: React.FC = () => {
           </IconButton>
         }
       />
+
+      {/* Custom Report Dialog */}
+      <Dialog
+        open={customReportDialogOpen}
+        onClose={() => setCustomReportDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Create Custom Report</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Report Name"
+              value={customReportConfig.name}
+              onChange={(e) => handleCustomReportConfigChange('name', e.target.value)}
+              sx={{ mb: 3 }}
+            />
+
+            <Typography variant="h6" gutterBottom>Filters</Typography>
+            <Divider sx={{ mb: 2 }} />
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2, mb: 2 }}>
+              <TextField
+                fullWidth
+                label="Location"
+                value={customReportConfig.filters.location}
+                onChange={(e) => handleCustomReportConfigChange('filters.location', e.target.value)}
+              />
+
+              <TextField
+                fullWidth
+                label="Custodian"
+                value={customReportConfig.filters.custodian}
+                onChange={(e) => handleCustomReportConfigChange('filters.custodian', e.target.value)}
+              />
+
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={customReportConfig.filters.status}
+                  onChange={(e) => handleCustomReportConfigChange('filters.status', e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="inactive">Inactive</MenuItem>
+                  <MenuItem value="disposed">Disposed</MenuItem>
+                  <MenuItem value="under_verification">Under Verification</MenuItem>
+                </Select>
+              </FormControl>
+
+              <TextField
+                fullWidth
+                label="Category"
+                value={customReportConfig.filters.category}
+                onChange={(e) => handleCustomReportConfigChange('filters.category', e.target.value)}
+              />
+
+              <TextField
+                fullWidth
+                label="Date From"
+                type="date"
+                value={customReportConfig.filters.date_range.start}
+                onChange={(e) => handleCustomReportConfigChange('filters.date_range.start', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+
+              <TextField
+                fullWidth
+                label="Date To"
+                type="date"
+                value={customReportConfig.filters.date_range.end}
+                onChange={(e) => handleCustomReportConfigChange('filters.date_range.end', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Box>
+
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Output Format</InputLabel>
+              <Select
+                value={customReportConfig.format}
+                onChange={(e) => handleCustomReportConfigChange('format', e.target.value)}
+                label="Output Format"
+              >
+                <MenuItem value="pdf">PDF</MenuItem>
+                <MenuItem value="json">JSON (Preview)</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCustomReportDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateCustomReport}
+            variant="contained"
+            disabled={!customReportConfig.name || generating === 'custom'}
+          >
+            {generating === 'custom' ? 'Creating...' : 'Create Report'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

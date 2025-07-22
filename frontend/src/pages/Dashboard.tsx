@@ -14,24 +14,26 @@ import {
   DialogContent,
   DialogActions,
   List,
-  ListItem,
   ListItemText,
   ListItemButton,
 } from '@mui/material';
 import {
   Inventory,
   VerifiedUser,
-  Assessment,
-  TrendingUp,
   Add,
   QrCodeScanner,
   Assessment as ReportIcon,
+  Warning,
+  Build,
+  Person,
 } from '@mui/icons-material';
 import { apiService } from '../services/apiService';
 import { DashboardStats, AuditLog } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentActivities, setRecentActivities] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +83,14 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const handleViewVerificationStatus = () => {
+    navigate('/verification-status');
+  };
+
+  const handleManageCustodians = () => {
+    navigate('/assets?tab=custodians');
+  };
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -108,6 +118,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  // Asset status stat cards
   const statCards = [
     {
       title: 'Total Assets',
@@ -122,16 +133,16 @@ const Dashboard: React.FC = () => {
       color: '#2e7d32',
     },
     {
-      title: 'Pending Verification',
-      value: stats.pending_verification.toLocaleString(),
-      icon: <Assessment />,
-      color: '#ed6c02',
+      title: 'Disposed Assets',
+      value: stats.disposed_assets.toLocaleString(),
+      icon: <Warning />,
+      color: '#f44336',
     },
     {
-      title: 'Total Value',
-      value: `$${(stats.total_value / 1000000).toFixed(1)}M`,
-      icon: <TrendingUp />,
-      color: '#9c27b0',
+      title: 'Maintenance Assets',
+      value: stats.maintenance_assets.toLocaleString(),
+      icon: <Build />,
+      color: '#ff9800',
     },
   ];
 
@@ -212,14 +223,16 @@ const Dashboard: React.FC = () => {
             Quick Actions
           </Typography>
           <Box display="flex" flexDirection="column" gap={2}>
-            <Button
-              variant="contained"
-              fullWidth
-              startIcon={<Add />}
-              onClick={handleAddNewAsset}
-            >
-              ADD NEW ASSET
-            </Button>
+            {(user?.role === 'asset_manager' || user?.role === 'admin') && (
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={<Add />}
+                onClick={handleAddNewAsset}
+              >
+                ADD NEW ASSET
+              </Button>
+            )}
             <Button
               variant="outlined"
               fullWidth
@@ -228,6 +241,27 @@ const Dashboard: React.FC = () => {
             >
               START VERIFICATION
             </Button>
+            {(user?.role === 'asset_manager' || user?.role === 'admin') && (
+              <>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<Warning />}
+                  onClick={handleViewVerificationStatus}
+                  color="warning"
+                >
+                  VIEW VERIFICATION STATUS
+                </Button>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<Person />}
+                  onClick={handleManageCustodians}
+                >
+                  MANAGE CUSTODIANS
+                </Button>
+              </>
+            )}
             <Button
               variant="outlined"
               fullWidth

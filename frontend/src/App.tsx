@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Assets from './pages/Assets';
 import Verification from './pages/Verification';
+import VerificationStatus from './pages/VerificationStatus';
 import Reports from './pages/Reports';
 import UserManagement from './pages/UserManagement';
 import SystemConfiguration from './pages/SystemConfiguration';
@@ -45,6 +46,11 @@ function App() {
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="assets" element={<Assets />} />
                 <Route path="verification" element={<Verification />} />
+                <Route path="verification-status" element={
+                  <AdminRoute requiredRole={["asset_manager", "admin"]}>
+                    <VerificationStatus />
+                  </AdminRoute>
+                } />
                 <Route path="reports" element={<Reports />} />
                 <Route path="admin/users" element={
                   <AdminRoute requiredRole="admin">

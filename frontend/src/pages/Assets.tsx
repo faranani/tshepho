@@ -31,17 +31,75 @@ import {
   Delete,
   QrCodeScanner,
   Search,
+  Person,
+  Warning,
+  DeleteForever,
 } from '@mui/icons-material';
 import { apiService } from '../services/apiService';
 import { Asset } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+
+// Calculation helper functions
+const calculateAssetMetrics = (asset: Asset) => {
+  const purchaseDate = new Date(asset.purchase_date);
+  const currentDate = new Date();
+  const ageInYears = (currentDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+
+  // Calculate depreciation (straight-line method)
+  const annualDepreciationRate = 1 / asset.useful_life_years;
+  const accumulatedDepreciation = Math.min(ageInYears * annualDepreciationRate, 1) * asset.purchase_cost;
+  const currentValue = Math.max(asset.purchase_cost - accumulatedDepreciation, 0);
+
+  // Calculate time to next maintenance (assuming 1 year maintenance cycle)
+  const lastMaintenanceDate = asset.maintenance_date ? new Date(asset.maintenance_date) : purchaseDate;
+  const nextMaintenanceDate = new Date(lastMaintenanceDate);
+  nextMaintenanceDate.setFullYear(nextMaintenanceDate.getFullYear() + 1);
+  const daysToMaintenance = Math.ceil((nextMaintenanceDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Calculate time remaining until disposal (based on useful life)
+  const disposalDate = new Date(purchaseDate);
+  disposalDate.setFullYear(disposalDate.getFullYear() + asset.useful_life_years);
+  const daysToDisposal = Math.ceil((disposalDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  return {
+    ageInYears: Math.round(ageInYears * 10) / 10,
+    currentValue: Math.round(currentValue * 100) / 100,
+    accumulatedDepreciation: Math.round(accumulatedDepreciation * 100) / 100,
+    depreciationPercentage: Math.round((accumulatedDepreciation / asset.purchase_cost) * 100),
+    daysToMaintenance,
+    daysToDisposal,
+    isOverdue: daysToDisposal < 0,
+    maintenanceOverdue: daysToMaintenance < 0
+  };
+};
 
 const Assets: React.FC = () => {
+  const { user } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<any>(null);
+  const [custodianDialogOpen, setCustodianDialogOpen] = useState(false);
+  const [selectedAssetForCustodian, setSelectedAssetForCustodian] = useState<Asset | null>(null);
+  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
+  const [dialogMessage, setDialogMessage] = useState('');
+
+  // Helper functions for popup messages
+  const showError = (message: string) => {
+    setDialogMessage(message);
+    setErrorDialogOpen(true);
+    setError(null); // Clear the banner error
+  };
+
+  const showSuccess = (message: string) => {
+    setDialogMessage(message);
+    setSuccessDialogOpen(true);
+    setError(null); // Clear any existing errors
+  };
+
   const [newAsset, setNewAsset] = useState({
     asset_tag: '',
     name: '',
@@ -51,7 +109,10 @@ const Assets: React.FC = () => {
     assigned_to: '',
     purchase_cost: '',
     useful_life_years: '5',
-    status: 'active'
+    status: 'active',
+    purchase_date: '',
+    maintenance_date: '',
+    disposed_date: ''
   });
 
   useEffect(() => {
@@ -77,7 +138,7 @@ const Assets: React.FC = () => {
           errorMessage = err.message;
         }
 
-        setError(errorMessage);
+        showError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -90,17 +151,30 @@ const Assets: React.FC = () => {
     try {
       // Validate required fields
       if (!newAsset.asset_tag || !newAsset.name || !newAsset.location || !newAsset.assigned_to) {
-        setError('Please fill in all required fields (Asset Tag, Name, Location, Assigned To)');
+        showError('Please fill in all required fields (Asset Tag, Name, Location, Assigned To)');
         return;
       }
 
-      const assetData = {
+      // Helper function to format date for backend
+      const formatDateForBackend = (dateString: string) => {
+        if (!dateString) return null;
+        try {
+          // If it's already in ISO format, return as is
+          if (dateString.includes('T')) return dateString;
+          // Convert YYYY-MM-DD to ISO format
+          return new Date(dateString + 'T00:00:00.000Z').toISOString();
+        } catch (error) {
+          return null;
+        }
+      };
+
+      const assetData: any = {
         asset_id: newAsset.asset_tag,
         description: newAsset.description || newAsset.name,
         location: newAsset.location,
         custodian: newAsset.assigned_to,
         barcode: editingAsset ? editingAsset.barcode : `BC${Date.now()}`,
-        purchase_date: editingAsset ? editingAsset.purchase_date : new Date().toISOString(),
+        purchase_date: formatDateForBackend(newAsset.purchase_date) || (editingAsset ? editingAsset.purchase_date : new Date().toISOString()),
         depreciation_class: 'equipment',
         purchase_cost: parseFloat(newAsset.purchase_cost) || 0,
         useful_life_years: parseInt(newAsset.useful_life_years) || 5,
@@ -108,6 +182,19 @@ const Assets: React.FC = () => {
         category: newAsset.category || 'General',
         notes: newAsset.description
       };
+
+      // Only add date fields if they have values
+      const maintenanceDate = formatDateForBackend(newAsset.maintenance_date);
+      if (maintenanceDate) {
+        assetData.maintenance_date = maintenanceDate;
+      }
+
+      const disposedDate = newAsset.status === 'disposed' ?
+        (formatDateForBackend(newAsset.disposed_date) || new Date().toISOString()) :
+        formatDateForBackend(newAsset.disposed_date);
+      if (disposedDate) {
+        assetData.disposed_date = disposedDate;
+      }
 
       if (editingAsset) {
         // For updates, use the asset_tag from the existing asset (backend uses this as identifier)
@@ -127,7 +214,10 @@ const Assets: React.FC = () => {
         assigned_to: '',
         purchase_cost: '',
         useful_life_years: '5',
-        status: 'active'
+        status: 'active',
+        purchase_date: '',
+        maintenance_date: '',
+        disposed_date: ''
       });
 
       // Refresh assets list
@@ -152,7 +242,7 @@ const Assets: React.FC = () => {
         errorMessage = err.message;
       }
 
-      setError(errorMessage);
+      showError(errorMessage);
     }
   };
 
@@ -168,11 +258,59 @@ const Assets: React.FC = () => {
       try {
         await apiService.deleteAsset(assetTag);
         setAssets(assets.filter(asset => asset.asset_tag !== assetTag));
-        alert('Asset deleted successfully');
+        showSuccess('Asset deleted successfully');
       } catch (err: any) {
-        alert(err.response?.data?.detail || 'Failed to delete asset');
+        let errorMessage = 'Failed to delete asset';
+
+        if (err.response?.data?.detail) {
+          errorMessage = err.response.data.detail;
+        } else if (err.response?.data?.message) {
+          errorMessage = err.response.data.message;
+        }
+
+        showError(errorMessage);
       }
     }
+  };
+
+  const handleDisposeAsset = async (asset: Asset) => {
+    if (window.confirm(`Are you sure you want to dispose of asset "${asset.asset_tag || asset.asset_id}"? This action will mark the asset as disposed.`)) {
+      try {
+        const updateData = {
+          status: 'disposed',
+          disposed_date: new Date().toISOString()
+        };
+
+        await apiService.updateAsset(asset.asset_tag || asset.asset_id || '', updateData);
+
+        // Refresh assets list
+        const data = await apiService.getAssets();
+        setAssets(data);
+
+        // Show success message
+        showSuccess('Asset has been successfully disposed.');
+      } catch (err: any) {
+        showError(err.response?.data?.message || 'Failed to dispose asset');
+      }
+    }
+  };
+
+  const handleAssignCustodian = (asset: Asset) => {
+    setSelectedAssetForCustodian(asset);
+    setCustodianDialogOpen(true);
+  };
+
+  const canDeleteAsset = (asset: Asset) => {
+    // Asset Manager cannot delete assets in WIP or under verification
+    if (user?.role === 'asset_manager') {
+      return asset.status !== 'wip' && asset.status !== 'under_verification';
+    }
+    // Admin can delete any asset
+    return user?.role === 'admin';
+  };
+
+  const canEditAsset = () => {
+    return user?.role === 'asset_manager' || user?.role === 'admin';
   };
 
   const handleEditAsset = (asset: any) => {
@@ -186,7 +324,10 @@ const Assets: React.FC = () => {
       assigned_to: asset.assigned_to || asset.custodian || '',
       purchase_cost: asset.purchase_cost?.toString() || '',
       useful_life_years: asset.useful_life_years?.toString() || '5',
-      status: asset.status || 'active'
+      status: asset.status || 'active',
+      purchase_date: asset.purchase_date ? asset.purchase_date.split('T')[0] : '',
+      maintenance_date: asset.maintenance_date ? asset.maintenance_date.split('T')[0] : '',
+      disposed_date: asset.disposed_date ? asset.disposed_date.split('T')[0] : ''
     });
     setEditingAsset(asset);
     setAddDialogOpen(true);
@@ -299,12 +440,17 @@ const Assets: React.FC = () => {
               <TableCell>Assigned To</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Current Value</TableCell>
+              <TableCell>Depreciation</TableCell>
+              <TableCell>Maintenance</TableCell>
+              <TableCell>Disposal</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredAssets.length > 0 ? (
-              filteredAssets.map((asset) => (
+              filteredAssets.map((asset) => {
+                const metrics = calculateAssetMetrics(asset);
+                return (
                 <TableRow key={asset._id}>
                   <TableCell>{asset.asset_tag || asset.asset_id}</TableCell>
                   <TableCell>{asset.name || asset.description}</TableCell>
@@ -318,28 +464,97 @@ const Assets: React.FC = () => {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>${(asset.current_value || asset.purchase_cost || 0).toLocaleString()}</TableCell>
+                  <TableCell>${metrics.currentValue.toLocaleString()}</TableCell>
                   <TableCell>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      onClick={() => handleEditAsset(asset)}
-                    >
-                      <Edit />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      onClick={() => handleDeleteAsset(asset.asset_tag || asset.asset_id || '')}
-                    >
-                      <Delete />
-                    </IconButton>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 'bold', color: metrics.depreciationPercentage > 75 ? 'error.main' : 'text.primary' }}>
+                        {metrics.depreciationPercentage}%
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        ${metrics.accumulatedDepreciation.toLocaleString()} lost
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <Typography variant="body2" sx={{ color: metrics.maintenanceOverdue ? 'error.main' : 'text.primary' }}>
+                        {metrics.maintenanceOverdue ? 'Overdue' : `${metrics.daysToMaintenance} days`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {metrics.maintenanceOverdue ? 'Maintenance needed' : 'Next maintenance'}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <Typography variant="body2" sx={{ color: metrics.isOverdue ? 'error.main' : metrics.daysToDisposal < 365 ? 'warning.main' : 'text.primary' }}>
+                        {metrics.isOverdue ? 'Overdue' : `${metrics.daysToDisposal} days`}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {metrics.isOverdue ? 'Should be disposed' : 'Until disposal'}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    {canEditAsset() && (
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => handleEditAsset(asset)}
+                        title="Edit Asset"
+                      >
+                        <Edit />
+                      </IconButton>
+                    )}
+                    {(user?.role === 'asset_manager' || user?.role === 'admin') && (
+                      <IconButton
+                        size="small"
+                        color="secondary"
+                        onClick={() => handleAssignCustodian(asset)}
+                        title="Assign Custodian"
+                      >
+                        <Person />
+                      </IconButton>
+                    )}
+                    {(user?.role === 'asset_manager' || user?.role === 'admin') && asset.status !== 'disposed' && (
+                      <IconButton
+                        size="small"
+                        color="warning"
+                        onClick={() => handleDisposeAsset(asset)}
+                        title="Dispose Asset"
+                      >
+                        <DeleteForever />
+                      </IconButton>
+                    )}
+                    {canDeleteAsset(asset) && (
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteAsset(asset.asset_tag || asset.asset_id || '')}
+                        title={asset.status === 'wip' || asset.status === 'under_verification' ?
+                          'Cannot delete: Asset is in WIP or under verification' : 'Delete Asset'}
+                        disabled={!canDeleteAsset(asset)}
+                      >
+                        <Delete />
+                      </IconButton>
+                    )}
+                    {(asset.status === 'wip' || asset.status === 'under_verification') && (
+                      <IconButton
+                        size="small"
+                        color="warning"
+                        title={`Asset is ${asset.status === 'wip' ? 'in WIP' : 'under verification'}`}
+                        disabled
+                      >
+                        <Warning />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             ) : (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={11} align="center">
                   <Typography variant="body2" color="text.secondary">
                     {searchTerm ? 'No assets found matching your search.' : 'No assets found.'}
                   </Typography>
@@ -452,6 +667,37 @@ const Assets: React.FC = () => {
                 <MenuItem value="disposed">Disposed</MenuItem>
               </Select>
             </FormControl>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Purchase Date"
+                type="date"
+                value={newAsset.purchase_date}
+                onChange={(e) => handleInputChange('purchase_date', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="Date when the asset was purchased"
+              />
+              <TextField
+                fullWidth
+                label="Maintenance Date"
+                type="date"
+                value={newAsset.maintenance_date}
+                onChange={(e) => handleInputChange('maintenance_date', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="Last maintenance performed"
+              />
+            </Box>
+            {newAsset.status === 'disposed' && (
+              <TextField
+                fullWidth
+                label="Disposed Date"
+                type="date"
+                value={newAsset.disposed_date}
+                onChange={(e) => handleInputChange('disposed_date', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="Date when asset was disposed"
+              />
+            )}
           </Box>
         </DialogContent>
         <DialogActions>
@@ -467,11 +713,72 @@ const Assets: React.FC = () => {
               assigned_to: '',
               purchase_cost: '',
               useful_life_years: '5',
-              status: 'active'
+              status: 'active',
+              purchase_date: '',
+              maintenance_date: '',
+              disposed_date: ''
             });
           }}>Cancel</Button>
           <Button onClick={handleAddAsset} variant="contained">
             {editingAsset ? 'Update Asset' : 'Add Asset'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Custodian Assignment Dialog */}
+      <Dialog open={custodianDialogOpen} onClose={() => setCustodianDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Assign Custodian</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Asset: {selectedAssetForCustodian?.asset_tag || selectedAssetForCustodian?.asset_id} - {selectedAssetForCustodian?.description}
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Current Custodian: {selectedAssetForCustodian?.custodian || selectedAssetForCustodian?.assigned_to || 'Unassigned'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Custodian assignment functionality will be implemented in the next phase.
+            This will include user selection, notification sending, and audit trail logging.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCustodianDialogOpen(false)}>
+            Close
+          </Button>
+          <Button variant="contained" disabled>
+            Assign (Coming Soon)
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Error Dialog */}
+      <Dialog open={errorDialogOpen} onClose={() => setErrorDialogOpen(false)}>
+        <DialogTitle sx={{ color: 'error.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Warning color="error" />
+          Error
+        </DialogTitle>
+        <DialogContent>
+          <Typography>{dialogMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setErrorDialogOpen(false)} color="primary">
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Success Dialog */}
+      <Dialog open={successDialogOpen} onClose={() => setSuccessDialogOpen(false)}>
+        <DialogTitle sx={{ color: 'success.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="h6" component="span" sx={{ color: 'success.main' }}>
+            ✓ Success
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Typography>{dialogMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSuccessDialogOpen(false)} color="primary">
+            OK
           </Button>
         </DialogActions>
       </Dialog>

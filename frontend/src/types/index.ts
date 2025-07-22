@@ -1,3 +1,74 @@
+export interface CustodianAssignment {
+  user_id: string;
+  username: string;
+  full_name: string;
+  email: string;
+  assigned_date: string;
+  assigned_by: string;
+  is_primary: boolean;
+  notification_sent: boolean;
+}
+
+export interface CustodianAssignmentRequest {
+  user_id: string;
+  is_primary: boolean;
+}
+
+export interface BulkCustodianAssignmentRequest {
+  custodians: CustodianAssignmentRequest[];
+  replace_existing: boolean;
+}
+
+export interface VerificationStatusResponse {
+  summary: {
+    total_assets: number;
+    active_verifications: number;
+    overdue_verifications: number;
+    upcoming_verifications: number;
+    exceptions: number;
+  };
+  active_verifications: AssetVerificationStatus[];
+  overdue_verifications: AssetVerificationStatus[];
+  upcoming_verifications: AssetVerificationStatus[];
+  exceptions: AssetVerificationStatus[];
+}
+
+export interface AssetVerificationStatus {
+  asset_id: string;
+  description: string;
+  location: string;
+  custodian?: string;
+  custodians: CustodianAssignment[];
+  status: string;
+  last_verification_date?: string;
+  next_verification_due?: string;
+  last_verification?: any;
+}
+
+export interface AssetDepreciationSummary {
+  asset_id: string;
+  description: string;
+  purchase_date: string;
+  purchase_cost: number;
+  useful_life_years: number;
+  depreciation_class: string;
+  current_calculations: {
+    age_in_years: number;
+    depreciation_rate_percent: number;
+    annual_depreciation: number;
+    accumulated_depreciation: number;
+    current_value: number;
+    depreciation_method: string;
+  };
+  depreciation_history: any[];
+  export_data: {
+    asset_value: number;
+    depreciation_rate: number;
+    accumulated_depreciation: number;
+    remaining_useful_life_years: number;
+  };
+}
+
 export interface Asset {
   _id: string;
   asset_id?: string;
@@ -16,7 +87,7 @@ export interface Asset {
   depreciation_class?: string;
   useful_life_years: number;
   salvage_value?: number;
-  status: 'active' | 'disposed' | 'maintenance' | 'missing' | 'inactive' | 'under_maintenance' | 'lost';
+  status: 'active' | 'disposed' | 'maintenance' | 'missing' | 'inactive' | 'under_maintenance' | 'lost' | 'wip' | 'under_verification';
   condition?: 'excellent' | 'good' | 'fair' | 'poor';
   warranty_expiry?: string;
   last_maintenance?: string;
@@ -34,18 +105,36 @@ export interface Asset {
   updated_at: string;
   created_by: string;
   updated_by: string;
+  custodians?: CustodianAssignment[];
+  last_verification_date?: string;
+  next_verification_due?: string;
+  verification_frequency_days?: number;
+  maintenance_date?: string;
+  disposed_date?: string;
 }
 
 export interface DashboardStats {
   total_assets: number;
   active_assets: number;
+  inactive_assets: number;
+  disposed_assets: number;
+  maintenance_assets: number;
+  wip_assets: number;
+  under_verification_assets: number;
+  lost_assets: number;
   pending_verification: number;
   maintenance_due: number;
   total_value: number;
+  current_value: number;
   depreciated_value: number;
   assets_by_category: { [key: string]: number };
   assets_by_location: { [key: string]: number };
   recent_activities: AuditLog[];
+  // Asset Manager specific metrics
+  overdue_verifications?: number;
+  verification_exceptions?: number;
+  assets_with_custodians?: number;
+  assets_without_custodians?: number;
 }
 
 export interface VerificationStats {

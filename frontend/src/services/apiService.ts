@@ -77,6 +77,22 @@ class ApiService {
     return response.data;
   }
 
+  // Asset Manager specific APIs
+  async assignCustodians(assetId: string, assignment: any) {
+    const response = await this.api.post(`/assets/${assetId}/custodians`, assignment);
+    return response.data;
+  }
+
+  async getVerificationStatus() {
+    const response = await this.api.get('/assets/verification-status');
+    return response.data;
+  }
+
+  async getAssetDepreciationSummary(assetId: string) {
+    const response = await this.api.get(`/assets/${assetId}/depreciation`);
+    return response.data;
+  }
+
   // Verification APIs
   async getVerificationStats() {
     const response = await this.api.get('/verification/stats');
@@ -214,6 +230,102 @@ class ApiService {
     const response = await this.api.get(`/reports/download/${reportId}`, {
       responseType: 'blob'
     });
+    return response.data;
+  }
+
+  // PDF Report Downloads
+  async downloadAssetRegisterPDF(filters?: any) {
+    const params = new URLSearchParams({ format: 'pdf', ...filters });
+    const response = await this.api.get(`/reports/asset-register?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadExceptionReportPDF(filters?: any) {
+    const params = new URLSearchParams({ format: 'pdf', ...filters });
+    const response = await this.api.get(`/reports/exceptions?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadDepreciationSummaryPDF() {
+    const response = await this.api.get('/reports/depreciation-summary?format=pdf', {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadVerificationResultsPDF(filters?: any) {
+    const params = new URLSearchParams({ format: 'pdf', ...filters });
+    const response = await this.api.get(`/reports/verification-results?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  // CSV Report Downloads
+  async downloadAssetRegisterCSV(filters?: any) {
+    const params = new URLSearchParams({ format: 'csv', ...filters });
+    const response = await this.api.get(`/reports/asset-register?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadExceptionReportCSV(filters?: any) {
+    const params = new URLSearchParams({ format: 'csv', ...filters });
+    const response = await this.api.get(`/reports/exceptions?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadDepreciationSummaryCSV() {
+    const response = await this.api.get('/reports/depreciation-summary?format=csv', {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  async downloadVerificationResultsCSV(filters?: any) {
+    const params = new URLSearchParams({ format: 'csv', ...filters });
+    const response = await this.api.get(`/reports/verification-results?${params}`, {
+      responseType: 'blob'
+    });
+    return response.data;
+  }
+
+  // Custom Reports
+  async createCustomReport(config: any) {
+    const response = await this.api.post('/reports/custom', config, {
+      responseType: config.format === 'pdf' ? 'blob' : 'json'
+    });
+    return response.data;
+  }
+
+  // View Reports (JSON format for preview)
+  async viewAssetRegister(filters?: any) {
+    const params = new URLSearchParams({ format: 'json', ...filters });
+    const response = await this.api.get(`/reports/asset-register?${params}`);
+    return response.data;
+  }
+
+  async viewExceptionReport(filters?: any) {
+    const params = new URLSearchParams({ format: 'json', ...filters });
+    const response = await this.api.get(`/reports/exceptions?${params}`);
+    return response.data;
+  }
+
+  async viewDepreciationSummary() {
+    const response = await this.api.get('/reports/depreciation-summary?format=json');
+    return response.data;
+  }
+
+  async viewVerificationResults(filters?: any) {
+    const params = new URLSearchParams({ format: 'json', ...filters });
+    const response = await this.api.get(`/reports/verification-results?${params}`);
     return response.data;
   }
 
