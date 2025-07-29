@@ -13,9 +13,9 @@ import VerificationStatus from './pages/VerificationStatus';
 import Reports from './pages/Reports';
 import UserManagement from './pages/UserManagement';
 import SystemConfiguration from './pages/SystemConfiguration';
-// import AuditLogs from './pages/AuditLogs';
-// import ComplianceReports from './pages/ComplianceReports';
-// import VerificationIssues from './pages/VerificationIssues';
+import AuditLogs from './pages/AuditLogs';
+import ComplianceReports from './pages/ComplianceReports';
+import VerificationIssues from './pages/VerificationIssues';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -62,23 +62,21 @@ function App() {
                     <SystemConfiguration />
                   </AdminRoute>
                 } />
-                {/* Temporarily disabled auditor routes for compilation
-              <Route path="auditor/logs" element={
+                <Route path="audit-logs" element={
                   <AdminRoute requiredRole={["auditor", "admin"]}>
                     <AuditLogs />
                   </AdminRoute>
                 } />
-                <Route path="auditor/reports" element={
+                <Route path="compliance-reports" element={
                   <AdminRoute requiredRole={["auditor", "admin"]}>
                     <ComplianceReports />
                   </AdminRoute>
                 } />
-                <Route path="auditor/issues" element={
+                <Route path="verification-issues" element={
                   <AdminRoute requiredRole={["auditor", "admin"]}>
                     <VerificationIssues />
                   </AdminRoute>
                 } />
-              */}
               </Route>
             </Routes>
           </Router>

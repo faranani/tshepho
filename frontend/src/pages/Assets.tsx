@@ -38,6 +38,7 @@ import {
 import { apiService } from '../services/apiService';
 import { Asset } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { safeCurrencyFormat } from '../utils/formatters';
 
 // Calculation helper functions
 const calculateAssetMetrics = (asset: Asset) => {
@@ -464,14 +465,14 @@ const Assets: React.FC = () => {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>${metrics.currentValue.toLocaleString()}</TableCell>
+                  <TableCell>{safeCurrencyFormat(metrics.currentValue)}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                       <Typography variant="body2" sx={{ fontWeight: 'bold', color: metrics.depreciationPercentage > 75 ? 'error.main' : 'text.primary' }}>
                         {metrics.depreciationPercentage}%
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        ${metrics.accumulatedDepreciation.toLocaleString()} lost
+                        {safeCurrencyFormat(metrics.accumulatedDepreciation)} lost
                       </Typography>
                     </Box>
                   </TableCell>

@@ -29,8 +29,9 @@ import {
   People,
   Settings,
   AdminPanelSettings,
-  // Description, // Temporarily disabled
-  // Warning, // Temporarily disabled
+  History,
+  Description,
+  Warning,
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -55,12 +56,11 @@ const adminMenuItems: NavigationMenuItem[] = [
   { text: 'System Configuration', icon: <Settings />, path: '/admin/system', roles: ['admin'] },
 ];
 
-// Temporarily disabled auditor menu items
-// const auditorMenuItems: MenuItem[] = [
-//   { text: 'Audit Logs', icon: <Assessment />, path: '/auditor/logs', roles: ['auditor', 'admin'] },
-//   { text: 'Compliance Reports', icon: <Description />, path: '/auditor/reports', roles: ['auditor', 'admin'] },
-//   { text: 'Verification Issues', icon: <Warning />, path: '/auditor/issues', roles: ['auditor', 'admin'] },
-// ];
+const auditorMenuItems: NavigationMenuItem[] = [
+  { text: 'Audit Trail', icon: <History />, path: '/audit-logs', roles: ['auditor', 'admin'] },
+  { text: 'Compliance Reports', icon: <Description />, path: '/compliance-reports', roles: ['auditor', 'admin'] },
+  { text: 'Verification Issues', icon: <Warning />, path: '/verification-issues', roles: ['auditor', 'admin'] },
+];
 
 const Layout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -142,7 +142,7 @@ const Layout: React.FC = () => {
         </>
       )}
 
-      {/* Auditor Section - Temporarily disabled
+      {/* Auditor Section */}
       {(user?.role === 'auditor' || user?.role === 'admin') && (
         <>
           <Divider />
@@ -174,7 +174,6 @@ const Layout: React.FC = () => {
           </List>
         </>
       )}
-      */}
     </div>
   );
 
